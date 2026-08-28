@@ -1,0 +1,119 @@
+name: asa-unraid
+
+# Production Compose stack used by the GitHub installer.
+# The controller manages the helper and ARK services through /var/run/docker.sock.
+services:
+  web-ui:
+    image: ${BPLUS_CONTROLLER_IMAGE:-ghcr.io/boss898989/bplus-ark-server-controller-unraid:1.3}
+    container_name: asa-web-ui
+    ports:
+      - "${WEB_PORT:-8088}:8080/tcp"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /etc/localtime:/etc/localtime:ro
+      - ./:/project
+      - ${APPDATA_PATH:-/mnt/user/appdata/asa-server}:/asa-appdata
+    restart: unless-stopped
+    networks: [asa]
+
+  permissions:
+    image: opensuse/leap:15.6
+    user: root
+    entrypoint:
+      - /bin/bash
+      - -lc
+      - >-
+        set -e;
+        mkdir -p /steam/compatibilitytools.d /steamcmd /server-files/ShooterGame/Saved /cluster-shared /config-home/protonfixes /steamcmd-tool '/instance-data/BPlus Controller/config' /instance-data/server-data/Saved /instance-data/server-data/ArkApi/Plugins /instance-data/server-data/ArkApi/logs /instance-data/proton-data;
+        if [ ! -f /server-files/.bplus-permissions-v2 ]; then
+          chown -R 25000:25000 /steam /steamcmd /server-files /cluster-shared /steamcmd-tool;
+          find /steamcmd -type f \( -name steamcmd.sh -o -name steamcmd \) -exec chmod a+x {} +;
+          find /steam/compatibilitytools.d -type f \( -name proton -o -name '*.sh' \) -exec chmod a+x {} +;
+          find /steam/compatibilitytools.d -type f -path '*/files/bin/*' -exec chmod a+x {} +;
+          find /server-files -type d -exec chmod 0777 {} +;
+          find /server-files -type f -exec chmod a+rw {} +;
+          touch /server-files/.bplus-permissions-v2;
+          chown 25000:25000 /server-files/.bplus-permissions-v2;
+        fi;
+        if [ ! -s /server-files/ShooterGame/Binaries/Win64/ArkAscendedServer.exe ]; then
+          find /server-files -type d -exec chmod 0777 {} +;
+          find /server-files -type f -exec chmod a+rw {} +;
+        fi;
+        chown -R 25000:25000 /config-home /instance-data;
+        find /instance-data/server-data/Saved /instance-data/server-data/ArkApi '/instance-data/BPlus Controller/config' /instance-data/proton-data -type d -exec chmod 0777 {} +;
+        find /instance-data/server-data/Saved /instance-data/server-data/ArkApi '/instance-data/BPlus Controller/config' /instance-data/proton-data -type f -exec chmod 0666 {} +
+    volumes:
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steam:/steam
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd:/steamcmd
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/server-files:/server-files
+      - ${SAVED_DATA_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/Saved}:/server-files/ShooterGame/Saved
+      - ${PLUGIN_DATA_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/ArkApi/Plugins}:/server-files/ShooterGame/Binaries/Win64/ArkApi/Plugins
+      - ${ARKAPI_LOG_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/ArkApi/logs}:/server-files/ShooterGame/Binaries/Win64/logs
+      - ${EXCLUSIVE_LIST_PATH:-/mnt/user/appdata/asa-server/servers/default/controller-files/PlayersExclusiveJoinList.txt}:/server-files/ShooterGame/Binaries/Win64/PlayersExclusiveJoinList.txt
+      - ${CLUSTER_DATA_PATH:-/mnt/user/appdata/asa-server/cluster-shared}:/cluster-shared
+      - ${INSTANCE_APPDATA_PATH:-/mnt/user/appdata/asa-server/servers/default}/config-home:/config-home
+      - ${INSTANCE_APPDATA_PATH:-/mnt/user/appdata/asa-server/servers/default}:/instance-data
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd-tool:/steamcmd-tool
+    restart: "no"
+    profiles: ["game"]
+
+  steamcmd-install:
+    image: cm2network/steamcmd:latest
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - >-
+        /bin/bash /home/steam/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +force_install_dir /server-files +login anonymous +app_info_update 1 +app_update 2430930 +quit
+    volumes:
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/server-files:/server-files
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd-tool/Steam:/home/steam/Steam
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd-tool/.steam:/home/steam/.steam
+    restart: "no"
+    profiles: ["tools"]
+
+  steamcmd-verify:
+    extends: steamcmd-install
+    command:
+      - >-
+        /bin/bash /home/steam/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +force_install_dir /server-files +login anonymous +app_info_update 1 +app_update 2430930 validate +quit
+
+  steamcmd-check:
+    extends: steamcmd-install
+    command:
+      - >-
+        /bin/bash /home/steam/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +login anonymous +app_info_update 1 +app_info_print 2430930 +quit
+
+  asa-server:
+    image: ${BPLUS_GAME_IMAGE:-ghcr.io/boss898989/bplus-asa-linux-server:1.3}
+    container_name: ${SERVER_CONTAINER_NAME:-asa-server}
+    hostname: ${SERVER_CONTAINER_NAME:-asa-server}
+    entrypoint: ["/bin/bash", "/usr/local/bin/bplus-start-server"]
+    user: gameserver
+    tty: true
+    env_file:
+      - ${SERVER_CONFIG_PATH:-./config/server.env}
+    ports:
+      - "${GAME_PORT:-7777}:${GAME_PORT:-7777}/udp"
+      - "${RCON_PORT:-27020}:${RCON_PORT:-27020}/tcp"
+    cpuset: "${CPU_SET:-}"
+    cpu_shares: ${CPU_SHARES:-1024}
+    volumes:
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steam:/home/gameserver/Steam
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd:/home/gameserver/steamcmd
+      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/server-files:/home/gameserver/server-files
+      - ${SAVED_DATA_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/Saved}:/home/gameserver/server-files/ShooterGame/Saved
+      - ${PLUGIN_DATA_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/ArkApi/Plugins}:/home/gameserver/server-files/ShooterGame/Binaries/Win64/ArkApi/Plugins
+      - ${ARKAPI_LOG_PATH:-/mnt/user/appdata/asa-server/servers/default/server-data/ArkApi/logs}:/home/gameserver/server-files/ShooterGame/Binaries/Win64/logs
+      - ${EXCLUSIVE_LIST_PATH:-/mnt/user/appdata/asa-server/servers/default/controller-files/PlayersExclusiveJoinList.txt}:/home/gameserver/server-files/ShooterGame/Binaries/Win64/PlayersExclusiveJoinList.txt
+      - ${CLUSTER_DATA_PATH:-/mnt/user/appdata/asa-server/cluster-shared}:/home/gameserver/cluster-shared
+      - ${INSTANCE_APPDATA_PATH:-/mnt/user/appdata/asa-server/servers/default}/config-home:/home/gameserver/.config
+      - ${INSTANCE_APPDATA_PATH:-/mnt/user/appdata/asa-server/servers/default}/proton-data:/home/gameserver/compatdata
+      - /etc/localtime:/etc/localtime:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: "no"
+    profiles: ["game"]
+    networks: [asa]
+
+networks:
+  asa:
+    driver: bridge

@@ -57,9 +57,24 @@ Existing files are never removed when a Pro feature is unavailable; the feature 
 
 ### Linux / Unraid
 
-1. Install the Docker controller from the published container/package or use the supplied Unraid Compose template.
-2. Map persistent controller and ARK appdata folders before starting the controller.
-3. Open the controller in a browser, install the shared ARK files, then create and configure server profiles.
+On Unraid, open the **Terminal** and run this one command:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Boss898989/B-Plus-Ark-Server-Controller/main/linux/install.sh)
+```
+
+It installs or updates the web controller at `http://<your-Unraid-IP>:8088`. It preserves all controller data, saves, INIs, mods, logs, and backups under `/mnt/user/appdata/asa-server`, and it does **not** start an ARK server.
+
+Run the same command again whenever you want to update the controller. Docker and Docker Compose v2 are required.
+
+To use custom locations or a different web port:
+
+```bash
+BPLUS_INSTALL_DIR=/mnt/user/appdata/bplus-ark-server-controller \
+BPLUS_APPDATA_PATH=/mnt/user/appdata/asa-server \
+BPLUS_WEB_PORT=8088 \
+bash <(curl -fsSL https://raw.githubusercontent.com/Boss898989/B-Plus-Ark-Server-Controller/main/linux/install.sh)
+```
 
 See the platform-specific documentation in [`ASA-Windows-Server`](ASA-Windows-Server) and [`ASA-Unraid-Server`](ASA-Unraid-Server) for detailed setup instructions.
 
