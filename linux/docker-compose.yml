@@ -65,8 +65,10 @@ services:
         /bin/bash /home/steam/steamcmd/steamcmd.sh +@sSteamCmdForcePlatformType windows +force_install_dir /server-files +login anonymous +app_info_update 1 +app_update 2430930 +quit
     volumes:
       - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/server-files:/server-files
-      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd-tool/Steam:/home/steam/Steam
-      - ${INSTALL_ROOT_PATH:-/mnt/user/appdata/asa-server/shared-install}/steamcmd-tool/.steam:/home/steam/.steam
+      # Keep SteamCMD's own cache disposable. Persisting it can leave ARK app
+      # 2430930 stuck in SteamCMD's paused 0x206 state, causing app_update to
+      # time out before it starts. The actual ARK installation remains persisted
+      # above at /server-files.
     restart: "no"
     profiles: ["tools"]
 
