@@ -1,0 +1,90 @@
+name: Publish Unraid controller update
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release containing the validated update archive
+        required: true
+        default: v1.3
+      asset:
+        description: Update ZIP filename
+        required: true
+        default: ASA-Unraid-Server-Update-1.3-hotfix-20260907.zip
+      sha256:
+        description: Expected SHA-256 of the update ZIP
+        required: true
+        default: 07666de9597518a63deb9804bfa16e838c249dd78308991fd9058fea1b0b0ab0
+      version:
+        description: Controller image tag
+        required: true
+        default: '1.3'
+      publish_latest:
+        description: Also update the latest controller tag
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: unraid-controller-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download and verify the release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ASSET: ${{ inputs.asset }}
+          EXPECTED_SHA256: ${{ inputs.sha256 }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$ASSET" =~ ^[A-Za-z0-9._-]+\.zip$ ]]
+          [[ "$EXPECTED_SHA256" =~ ^[a-fA-F0-9]{64}$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]
+          mkdir download package
+          gh release download "$RELEASE_TAG" --pattern "$ASSET" --dir download
+          printf '%s  %s\n' "$EXPECTED_SHA256" "download/$ASSET" | sha256sum --check --strict
+          unzip -q "download/$ASSET" -d package
+          test -f package/Dockerfile.controller
+          test -f package/web-ui/server.py
+          docker compose -f package/docker-compose.container.yml --profile tools config --quiet
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image tags
+        id: tags
+        env:
+          OWNER: ${{ github.repository_owner }}
+          VERSION: ${{ inputs.version }}
+          PUBLISH_LATEST: ${{ inputs.publish_latest }}
+        run: |
+          tags="ghcr.io/${OWNER,,}/bplus-ark-server-controller-unraid:$VERSION"
+          if [[ "$PUBLISH_LATEST" == true ]]; then
+            tags="$tags,ghcr.io/${OWNER,,}/bplus-ark-server-controller-unraid:latest"
+          fi
+          echo "value=$tags" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: package
+          file: package/Dockerfile.controller
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.tags.outputs.value }}
+          build-args: BPLUS_VERSION=${{ inputs.version }}
+          provenance: mode=max
+          sbom: true

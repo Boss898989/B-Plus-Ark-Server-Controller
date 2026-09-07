@@ -56,6 +56,7 @@ Existing files are never removed when a Pro feature is unavailable; the feature 
 5. Add servers and configure their ports, map, INIs, and mods.
 
 ### Linux / Unraid
+The [v1.3 release](https://github.com/Boss898989/B-Plus-Ark-Server-Controller/releases/tag/v1.3) includes the September 7 Unraid recovery hotfix download for existing local Compose installations. Copy the update archive into your existing project, then run `docker compose up -d --build --no-deps web-ui`. The hotfix repairs manifest-denial recovery and loads Steam metadata before validation. See the release notes for details and the archive checksum.
 
 On Unraid, open the **Terminal** and run this one command:
 
